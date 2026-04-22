@@ -6,6 +6,7 @@ package tui
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -47,8 +48,9 @@ type batReadyMsg struct {
 type mode int
 
 const (
-	modeNormal mode = iota
-	modeInput       // prompting for a new threshold
+	modeNormal         mode = iota
+	modeInput               // prompting for a new threshold
+	modeConfirmPersist      // prompting to persist after threshold change
 )
 
 type model struct {
@@ -112,28 +114,24 @@ func ensureBatCmd() tea.Cmd {
 
 func setThresholdCmd(binPath string, pct int) tea.Cmd {
 	return func() tea.Msg {
-		out, err := battery.SetThresholdWithBat(binPath, pct)
+		_, err := battery.SetThresholdWithBat(binPath, pct)
 		if err != nil {
-			if derr := battery.SetThreshold(pct); derr == nil {
-				return actionMsg{label: "threshold", output: fmt.Sprintf("Threshold set to %d%%.", pct)}
+			if derr := battery.SetThreshold(pct); derr != nil {
+				return actionMsg{label: "threshold", err: derr}
 			}
 		}
-		return actionMsg{label: "threshold", output: string(out), err: err}
+		return actionMsg{label: "threshold", output: fmt.Sprintf("Threshold set to %d%%.", pct)}
 	}
 }
 
-func persistCmd(binPath string) tea.Cmd {
-	return func() tea.Msg {
-		out, err := battery.PersistWithBat(binPath)
-		return actionMsg{label: "persist", output: string(out), err: err}
-	}
-}
-
-func resetCmd(binPath string) tea.Cmd {
-	return func() tea.Msg {
-		out, err := battery.ResetWithBat(binPath)
-		return actionMsg{label: "reset", output: string(out), err: err}
-	}
+func sudoBatCmd(binPath, subcmd, label string) tea.Cmd {
+	c := exec.Command("sudo", binPath, subcmd)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		if err != nil {
+			return actionMsg{label: label, err: err}
+		}
+		return actionMsg{label: label, output: fmt.Sprintf("%s: ok", label)}
+	})
 }
 
 // --- Update ---------------------------------------------------------------
@@ -150,6 +148,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case infoMsg:
 		m.info = msg.info
 		m.loadErr = msg.err
+		if m.status == "Refreshing…" {
+			m.status = ""
+		}
 		return m, nil
 
 	case batReadyMsg:
@@ -162,7 +163,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.installed:
 			m.status = fmt.Sprintf("First-run setup: installed bundled bat → %s", msg.path)
 		default:
-			m.status = "Press ? for help, q to quit."
+			m.status = ""
 		}
 		return m, nil
 
@@ -175,16 +176,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if text == "" {
 				text = fmt.Sprintf("%s: ok", msg.label)
 			}
+			// After a successful threshold change, prompt to persist.
+			if msg.label == "threshold" {
+				m.mode = modeConfirmPersist
+				m.status = text + "  Persist across reboots? Enter = yes, Esc = no"
+				return m, fetchInfoCmd()
+			}
 			m.status = text
 		}
 		// Refresh after any mutation so the UI reflects the new state.
 		return m, fetchInfoCmd()
 
 	case tea.KeyMsg:
-		if m.mode == modeInput {
+		switch m.mode {
+		case modeInput:
 			return m.updateInput(msg)
+		case modeConfirmPersist:
+			return m.updateConfirmPersist(msg)
+		default:
+			return m.updateNormal(msg)
 		}
-		return m.updateNormal(msg)
 	}
 	return m, nil
 }
@@ -215,14 +226,14 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status = "Running `sudo bat persist`…"
-		return m, persistCmd(m.batPath)
+		return m, sudoBatCmd(m.batPath, "persist", "persist")
 	case "R":
 		if m.batPath == "" {
 			m.status = "Bundled bat binary is unavailable; rebuild volt with `make build`."
 			return m, nil
 		}
 		m.status = "Running `sudo bat reset`…"
-		return m, resetCmd(m.batPath)
+		return m, sudoBatCmd(m.batPath, "reset", "reset")
 	case "?":
 		m.status = "Keys: r refresh · s set threshold · p persist · R reset · q quit"
 		return m, nil
@@ -258,6 +269,20 @@ func (m model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+}
+
+func (m model) updateConfirmPersist(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		m.mode = modeNormal
+		m.status = "Running `sudo bat persist`…"
+		return m, sudoBatCmd(m.batPath, "persist", "persist")
+	case "esc":
+		m.mode = modeNormal
+		m.status = "Threshold set (not persisted)."
+		return m, nil
+	}
+	return m, nil
 }
 
 // --- View -----------------------------------------------------------------

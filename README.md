@@ -34,11 +34,15 @@ never build or install `bat` separately.
 ## Install & run
 
 ```sh
+git clone --recurse-submodules https://github.com/dejanvujkov/volt.git
+cd volt
 make build        # compiles bat, embeds it, compiles volt
 ./bin/volt        # launches the TUI — bat is extracted on first run
 ```
 
 That's it. There is no separate step to install or copy `bat` anywhere.
+If you forgot `--recurse-submodules`, just run `make build` — the Makefile
+initialises the submodule automatically.
 
 ## Keybindings
 

@@ -13,7 +13,7 @@ VOLT_TAG     := $(shell git describe --always --dirty --tags 2>/dev/null || echo
 BAT_LDFLAGS  := -X main.tag=$(BAT_TAG)
 VOLT_LDFLAGS := -X main.voltVersion=$(VOLT_TAG)
 
-.PHONY: all build bat embed run tidy clean
+.PHONY: all build bat embed run tidy clean submodule
 
 all: build
 
@@ -32,10 +32,17 @@ $(EMBED_BIN): $(BAT_BUILD)
 ## bat: build the vendored tshakalekholoane/bat binary
 bat: $(BAT_BUILD)
 
-$(BAT_BUILD):
+$(BAT_BUILD): | submodule
 	@mkdir -p $(BAT_DIR)/bin
 	cd $(BAT_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 		go build -ldflags="$(BAT_LDFLAGS)" -o bin/bat .
+
+## submodule: ensure third_party/bat source is present
+submodule:
+	@if [ ! -f $(BAT_DIR)/go.mod ]; then \
+		echo "Initialising bat submodule…"; \
+		git submodule update --init --recursive $(BAT_DIR); \
+	fi
 
 ## run: launch the TUI (builds first)
 run: build
