@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/dejanvujkov/volt/internal/batbin"
 	"github.com/dejanvujkov/volt/internal/battery"
 )
 
@@ -34,6 +35,12 @@ type actionMsg struct {
 	output string
 	err    error
 }
+type batReadyMsg struct {
+	path        string
+	version     string
+	installed   bool // true when the binary was extracted during this run
+	err         error
+}
 
 // --- Model ----------------------------------------------------------------
 
@@ -48,6 +55,10 @@ type model struct {
 	info    battery.Info
 	loadErr error
 
+	batPath    string
+	batVersion string
+	batErr     error
+
 	mode    mode
 	input   string // buffer for threshold entry
 	status  string // last status / action output shown in the footer
@@ -58,14 +69,15 @@ type model struct {
 
 func initialModel() model {
 	return model{
-		status:  "Press ? for help, q to quit.",
+		status:  "Preparing bundled bat binary…",
 		startAt: time.Now(),
 	}
 }
 
-// Init kicks off the first fetch and the refresh ticker.
+// Init kicks off the bat extraction, the first battery fetch, and the
+// refresh ticker in parallel.
 func (m model) Init() tea.Cmd {
-	return tea.Batch(fetchInfoCmd(), tickCmd())
+	return tea.Batch(ensureBatCmd(), fetchInfoCmd(), tickCmd())
 }
 
 // --- Commands -------------------------------------------------------------
@@ -81,11 +93,26 @@ func fetchInfoCmd() tea.Cmd {
 	}
 }
 
-func setThresholdCmd(pct int) tea.Cmd {
+// ensureBatCmd extracts the bundled bat binary on first run and resolves
+// its version for display. It is intentionally safe to call repeatedly;
+// subsequent invocations observe the cached copy and return installed=false.
+func ensureBatCmd() tea.Cmd {
 	return func() tea.Msg {
-		// Prefer the vendored bat binary (handles sudo prompts & validation)
-		// and fall back to a direct sysfs write when it is not installed.
-		out, err := battery.SetThresholdWithBat(pct)
+		path, installed, err := batbin.EnsureInstalled()
+		if err != nil {
+			return batReadyMsg{err: err}
+		}
+		return batReadyMsg{
+			path:      path,
+			version:   batbin.Version(path),
+			installed: installed,
+		}
+	}
+}
+
+func setThresholdCmd(binPath string, pct int) tea.Cmd {
+	return func() tea.Msg {
+		out, err := battery.SetThresholdWithBat(binPath, pct)
 		if err != nil {
 			if derr := battery.SetThreshold(pct); derr == nil {
 				return actionMsg{label: "threshold", output: fmt.Sprintf("Threshold set to %d%%.", pct)}
@@ -95,16 +122,16 @@ func setThresholdCmd(pct int) tea.Cmd {
 	}
 }
 
-func persistCmd() tea.Cmd {
+func persistCmd(binPath string) tea.Cmd {
 	return func() tea.Msg {
-		out, err := battery.PersistWithBat()
+		out, err := battery.PersistWithBat(binPath)
 		return actionMsg{label: "persist", output: string(out), err: err}
 	}
 }
 
-func resetCmd() tea.Cmd {
+func resetCmd(binPath string) tea.Cmd {
 	return func() tea.Msg {
-		out, err := battery.ResetWithBat()
+		out, err := battery.ResetWithBat(binPath)
 		return actionMsg{label: "reset", output: string(out), err: err}
 	}
 }
@@ -123,6 +150,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case infoMsg:
 		m.info = msg.info
 		m.loadErr = msg.err
+		return m, nil
+
+	case batReadyMsg:
+		m.batPath = msg.path
+		m.batVersion = msg.version
+		m.batErr = msg.err
+		switch {
+		case msg.err != nil:
+			m.status = fmt.Sprintf("bat unavailable: %v (mutating actions disabled)", msg.err)
+		case msg.installed:
+			m.status = fmt.Sprintf("First-run setup: installed bundled bat → %s", msg.path)
+		default:
+			m.status = "Press ? for help, q to quit."
+		}
 		return m, nil
 
 	case actionMsg:
@@ -156,6 +197,10 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = "Refreshing…"
 		return m, fetchInfoCmd()
 	case "s":
+		if m.batPath == "" {
+			m.status = "Bundled bat binary is unavailable; rebuild volt with `make build`."
+			return m, nil
+		}
 		if !m.info.ThresholdSupported {
 			m.status = "Kernel does not expose charge_control_end_threshold."
 			return m, nil
@@ -165,11 +210,19 @@ func (m model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = "Enter threshold (1-100), press Enter to apply, Esc to cancel."
 		return m, nil
 	case "p":
+		if m.batPath == "" {
+			m.status = "Bundled bat binary is unavailable; rebuild volt with `make build`."
+			return m, nil
+		}
 		m.status = "Running `sudo bat persist`…"
-		return m, persistCmd()
+		return m, persistCmd(m.batPath)
 	case "R":
+		if m.batPath == "" {
+			m.status = "Bundled bat binary is unavailable; rebuild volt with `make build`."
+			return m, nil
+		}
 		m.status = "Running `sudo bat reset`…"
-		return m, resetCmd()
+		return m, resetCmd(m.batPath)
 	case "?":
 		m.status = "Keys: r refresh · s set threshold · p persist · R reset · q quit"
 		return m, nil
@@ -192,8 +245,8 @@ func (m model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.mode = modeNormal
 		m.input = ""
-		m.status = fmt.Sprintf("Applying threshold %d%% via `bat`…", pct)
-		return m, setThresholdCmd(pct)
+		m.status = fmt.Sprintf("Applying threshold %d%% via bundled bat…", pct)
+		return m, setThresholdCmd(m.batPath, pct)
 	case "backspace":
 		if len(m.input) > 0 {
 			m.input = m.input[:len(m.input)-1]
@@ -228,6 +281,7 @@ var (
 	footerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#8a8a8a")).MarginTop(1)
 	helpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#5F5F87")).MarginTop(1)
 	bannerChrome = lipgloss.NewStyle().Foreground(lipgloss.Color("#F5D547"))
+	subtitleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#8a8a8a")).Italic(true)
 )
 
 func (m model) View() string {
@@ -235,13 +289,15 @@ func (m model) View() string {
 
 	b.WriteString(banner())
 	b.WriteString("\n")
+	b.WriteString(subtitleStyle.Render("    " + m.batLine()))
+	b.WriteString("\n")
 
 	if m.loadErr != nil {
 		b.WriteString(statusWarn.Render(fmt.Sprintf("error reading battery: %v", m.loadErr)))
 		b.WriteString("\n")
 	}
 
-	b.WriteString(boxStyle.Render(m.renderBattery()))
+	b.WriteString(boxStyle.Render(m.renderHost()))
 	b.WriteString("\n")
 	b.WriteString(boxStyle.Render(m.renderCharge()))
 
@@ -259,6 +315,22 @@ func (m model) View() string {
 	return b.String()
 }
 
+// batLine returns the one-line "powered by bat x.y" string shown under the
+// banner. It distinguishes three states: fully ready, ready-without-version,
+// and unavailable.
+func (m model) batLine() string {
+	switch {
+	case m.batErr != nil:
+		return fmt.Sprintf("bat: unavailable (%v)", m.batErr)
+	case m.batPath == "":
+		return "bat: resolving…"
+	case m.batVersion == "":
+		return "powered by bundled bat (unknown version)"
+	default:
+		return fmt.Sprintf("powered by bundled bat %s", m.batVersion)
+	}
+}
+
 func banner() string {
 	art := []string{
 		"  ██╗  ██╗ ██████╗ ██╗  ████████╗",
@@ -271,7 +343,7 @@ func banner() string {
 	return bannerChrome.Render(strings.Join(art, "\n"))
 }
 
-func (m model) renderBattery() string {
+func (m model) renderHost() string {
 	info := m.info
 
 	state := "battery detected"
@@ -282,10 +354,15 @@ func (m model) renderBattery() string {
 	if root == "" {
 		root = "—"
 	}
+	batPath := m.batPath
+	if batPath == "" {
+		batPath = "—"
+	}
 
 	rows := [][2]string{
 		{"state", state},
 		{"sysfs root", root},
+		{"bat binary", batPath},
 		{"uptime", time.Since(m.startAt).Round(time.Second).String()},
 	}
 	return titleStyle.Render("host") + "\n" + renderRows(rows)

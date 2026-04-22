@@ -1,2 +1,3 @@
 /bin/
-third_party/bat/bat
+third_party/bat/bin/
+internal/batbin/batdata/bat

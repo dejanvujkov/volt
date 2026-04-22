@@ -82,42 +82,40 @@ func SetThreshold(pct int) error {
 	return os.WriteFile(path, []byte(strconv.Itoa(pct)), 0o644)
 }
 
-// SetThresholdWithBat shells out to the `bat` binary (expected on PATH) to
-// apply the new threshold. When the caller lacks privileges it retries under
-// sudo. The bundled upstream project exposes exactly this behaviour.
-func SetThresholdWithBat(pct int) ([]byte, error) {
+// SetThresholdWithBat shells out to the given bat binary to apply a new
+// threshold. Callers should resolve the path via batbin.EnsureInstalled
+// rather than trusting $PATH — there are several unrelated tools named
+// "bat" in the wild (notably sharkdp/bat).
+func SetThresholdWithBat(binPath string, pct int) ([]byte, error) {
 	if pct < 1 || pct > 100 {
 		return nil, fmt.Errorf("threshold must be between 1 and 100, got %d", pct)
 	}
-	bin, err := exec.LookPath("bat")
-	if err != nil {
-		return nil, fmt.Errorf("`bat` not found on $PATH: %w", err)
+	if binPath == "" {
+		return nil, errors.New("no bundled bat binary available")
 	}
-	cmd := exec.Command(bin, "threshold", strconv.Itoa(pct))
-	return cmd.CombinedOutput()
+	return exec.Command(binPath, "threshold", strconv.Itoa(pct)).CombinedOutput()
 }
 
-// PersistWithBat invokes `sudo bat persist`.
-func PersistWithBat() ([]byte, error) {
-	return runSudoBat("persist")
+// PersistWithBat invokes `sudo <binPath> persist`.
+func PersistWithBat(binPath string) ([]byte, error) {
+	return runSudoBat(binPath, "persist")
 }
 
-// ResetWithBat invokes `sudo bat reset`.
-func ResetWithBat() ([]byte, error) {
-	return runSudoBat("reset")
+// ResetWithBat invokes `sudo <binPath> reset`.
+func ResetWithBat(binPath string) ([]byte, error) {
+	return runSudoBat(binPath, "reset")
 }
 
-func runSudoBat(subcmd string) ([]byte, error) {
-	bin, err := exec.LookPath("bat")
-	if err != nil {
-		return nil, fmt.Errorf("`bat` not found on $PATH: %w", err)
+func runSudoBat(binPath, subcmd string) ([]byte, error) {
+	if binPath == "" {
+		return nil, errors.New("no bundled bat binary available")
 	}
 	sudo, err := exec.LookPath("sudo")
 	if err != nil {
 		// Fall back to running bat directly; it will refuse if unprivileged.
-		return exec.Command(bin, subcmd).CombinedOutput()
+		return exec.Command(binPath, subcmd).CombinedOutput()
 	}
-	return exec.Command(sudo, bin, subcmd).CombinedOutput()
+	return exec.Command(sudo, binPath, subcmd).CombinedOutput()
 }
 
 func primaryRoot() (string, error) {
