@@ -1,5 +1,8 @@
 # volt
 
+[![Pipeline](https://github.com/dejanvujkov/volt/actions/workflows/go.yml/badge.svg)](https://github.com/dejanvujkov/volt/actions/workflows/go.yml)
+![Go Version](https://img.shields.io/badge/go-1.26.2-00ADD8?logo=go&logoColor=white)
+
 A compact Bubble Tea TUI for managing laptop battery charging thresholds on
 Linux. `volt` wraps — and **bundles** — [`tshakalekholoane/bat`][bat] so you
 get the same battery-management capabilities through an interactive
@@ -46,14 +49,14 @@ initialises the submodule automatically.
 
 ## Keybindings
 
-| Key | Action                                     |
-| --- | ------------------------------------------ |
-| `r` | Force refresh                              |
-| `s` | Enter a new threshold (1–100)              |
+| Key | Action                                             |
+| --- | -------------------------------------------------- |
+| `r` | Force refresh                                      |
+| `s` | Enter a new threshold (1–100)                      |
 | `p` | `sudo bat persist` — keep threshold across reboots |
-| `R` | `sudo bat reset`   — clear persistence     |
-| `?` | Inline key help                            |
-| `q` | Quit                                       |
+| `R` | `sudo bat reset` — clear persistence               |
+| `?` | Inline key help                                    |
+| `q` | Quit                                               |
 
 ## CLI mode
 
