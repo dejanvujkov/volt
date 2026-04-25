@@ -76,12 +76,12 @@ func printVersion() {
 	fmt.Printf("volt %s\n", voltVersion)
 	path, _, err := batbin.EnsureInstalled()
 	if err != nil {
-		fmt.Printf("bat  unavailable (%v)\n", err)
+		fmt.Printf("bat  %s (embedded, %v)\n", batbin.EmbeddedTag(), err)
 		return
 	}
 	v := batbin.Version(path)
 	if v == "" {
-		v = "unknown"
+		v = batbin.EmbeddedTag()
 	}
 	fmt.Printf("bat  %s (bundled, %s)\n", v, path)
 }

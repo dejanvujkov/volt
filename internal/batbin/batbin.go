@@ -199,6 +199,9 @@ func Describe() string {
 	}
 	_, v := resolve()
 	if v == "" {
+		v = EmbeddedTag()
+	}
+	if v == "" || v == "unknown" {
 		return "bat (bundled)"
 	}
 	return fmt.Sprintf("bat %s (bundled)", v)
