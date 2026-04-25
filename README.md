@@ -37,15 +37,15 @@ never build or install `bat` separately.
 ## Install & run
 
 ```sh
-git clone --recurse-submodules https://github.com/dejanvujkov/volt.git
+git clone https://github.com/dejanvujkov/volt.git
 cd volt
-make build        # compiles bat, embeds it, compiles volt
+make build        # compiles volt with the bundled bat binary baked in
 ./bin/volt        # launches the TUI — bat is extracted on first run
 ```
 
-That's it. There is no separate step to install or copy `bat` anywhere.
-If you forgot `--recurse-submodules`, just run `make build` — the Makefile
-initialises the submodule automatically.
+That's it. The `bat` binary ships pre-built inside this repo
+(`internal/batbin/batdata/bat`); the build never has to compile it.
+On first run, volt extracts that binary to `~/.cache/volt/bat`.
 
 ## Keybindings
 
@@ -73,25 +73,47 @@ volt version        # "volt <tag>" + "bat <tag> (bundled, <path>)"
 
 ## How the bundling works
 
-1. `make build` runs `third_party/bat` through `go build` with the
-   upstream `-ldflags "-X main.tag=$(git describe …)"` so the version
-   string is real.
-2. The resulting binary is copied to `internal/batbin/batdata/bat`.
-3. `internal/batbin/embed.go` declares `//go:embed batdata`, so that
-   binary becomes part of the `volt` executable.
+1. The upstream `tshakalekholoane/bat` binary is committed to this repo
+   at `internal/batbin/batdata/bat`. A plain-text manifest at
+   `internal/batbin/BAT_VERSION` records the upstream tag, sha256,
+   source URL, and the date it was fetched.
+2. `internal/batbin/embed.go` declares `//go:embed batdata`, so the
+   binary becomes part of the `volt` executable at compile time.
+3. `internal/batbin/version.go` declares `//go:embed BAT_VERSION`, so the
+   manifest tag is also available at compile time via
+   `batbin.EmbeddedTag()` — used as a fallback for the banner when the
+   extracted binary cannot be executed for any reason.
 4. At runtime, `batbin.EnsureInstalled` writes the embedded binary to
-   `~/.cache/volt/bat` (atomically, via a temp file + rename) and chmods
-   it `0755`. Subsequent runs detect the cached copy and reuse it. A
-   size mismatch after a `volt` upgrade triggers a re-extract.
+   `~/.cache/volt/bat` (atomically, via a temp file + rename) and
+   chmods it `0755`. Subsequent runs detect the cached copy and reuse
+   it. A size mismatch after a `volt` upgrade triggers a re-extract.
 5. `batbin.Version` runs the resolved binary with `-v` and parses
-   `bat <tag>` out of stdout, which is what the TUI banner renders.
+   `bat <tag>` out of stdout; the TUI banner renders that tag, falling
+   back to `EmbeddedTag()` if the runtime invocation fails.
 
-## Vendored project
+### Upgrading the bundled `bat`
 
-The canonical `bat` sources are checked in under
-[`third_party/bat/`](third_party/bat). volt re-implements the sysfs reads
-directly; writes that need systemd (persist/reset) defer to the bundled
-binary so its well-tested behaviour is preserved.
+Upgrading is a deliberate, manual step performed during volt release
+prep. The full checklist lives at
+[`docs/UPGRADING-BAT.md`](docs/UPGRADING-BAT.md). The mechanical part
+is:
+
+```sh
+make update-bat VERSION=v0.10.0
+```
+
+This downloads the upstream release binary, verifies its sha256, swaps
+the embed slot, and rewrites `BAT_VERSION`. `make verify-bat` re-checks
+that the committed binary still matches the manifest at any later
+point.
+
+## Upstream project
+
+The upstream tool is [`tshakalekholoane/bat`][bat]. volt re-implements
+the sysfs reads directly; writes that need systemd (persist/reset)
+defer to the bundled binary so its well-tested behaviour is preserved.
+The exact upstream version currently shipped is recorded in
+[`internal/batbin/BAT_VERSION`](internal/batbin/BAT_VERSION).
 
 ## Disclaimer
 
