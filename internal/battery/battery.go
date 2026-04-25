@@ -1,11 +1,11 @@
 // Package battery exposes a view of the host's primary battery together
 // with helpers for mutating the charge-control threshold.
 //
-// The implementation reads the sysfs entries used by
-// tshakalekholoane/bat (vendored under third_party/bat) and is able to drive
-// persist/reset operations through that project's binary when it is present
-// on $PATH. volt targets Linux laptops only; other platforms will fail to
-// build by design (see the build tags on battery_linux.go).
+// The implementation reads the sysfs entries used by upstream
+// tshakalekholoane/bat and is able to drive persist/reset operations
+// through that project's binary when it is present on $PATH. volt
+// targets Linux laptops only; other platforms will fail to build by
+// design (see the build tags on battery_linux.go).
 package battery
 
 import "fmt"
