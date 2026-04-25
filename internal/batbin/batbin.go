@@ -5,9 +5,12 @@
 // cache directory on first run.
 //
 // volt is designed so that end users never have to build or install `bat`
-// themselves: `make build` compiles bat, embeds it here via //go:embed,
-// and at runtime EnsureInstalled drops the binary into
-// $XDG_CACHE_HOME/volt/bat with an executable bit set.
+// themselves: a prebuilt bat binary is committed to this repository at
+// internal/batbin/batdata/bat (see internal/batbin/BAT_VERSION for the
+// upstream tag and sha256). It is embedded into volt via //go:embed, and
+// at runtime EnsureInstalled drops the binary into $XDG_CACHE_HOME/volt/bat
+// with an executable bit set. To upgrade the bundled bat, see
+// docs/UPGRADING-BAT.md.
 package batbin
 
 import (

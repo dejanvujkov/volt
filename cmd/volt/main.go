@@ -2,11 +2,11 @@
 
 // Binary volt is a Bubble Tea TUI for managing the battery charge-control
 // threshold on Linux laptops. It is a thin, interactive front-end over the
-// same sysfs attributes driven by the vendored tshakalekholoane/bat project
-// (see third_party/bat in this repository). The upstream `bat` binary is
-// bundled directly into the volt executable via //go:embed and extracted
-// to the user cache directory on first run, so end users never have to
-// build or install bat themselves.
+// same sysfs attributes driven by the upstream tshakalekholoane/bat tool.
+// The upstream `bat` binary is bundled directly into the volt executable
+// via //go:embed (committed at internal/batbin/batdata/bat with metadata
+// at internal/batbin/BAT_VERSION) and extracted to the user cache directory
+// on first run, so end users never have to build or install bat themselves.
 package main
 
 import (
