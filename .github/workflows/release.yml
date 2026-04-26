@@ -85,6 +85,26 @@ jobs:
           fi
           echo "✓ exactly 1 .deb and 1 .rpm in dist/"
 
+      - name: Sanitize asset filenames for GitHub upload
+        # softprops/action-gh-release rewrites '~' to '.' in uploaded asset
+        # filenames (the original name only survives as the asset label). If
+        # SHA256SUMS is generated against the on-disk '~' name, downloaders
+        # see a mismatch. Rename the on-disk files to their sanitized form
+        # BEFORE generating SHA256SUMS so the sums file, the on-disk name,
+        # and the GitHub asset name all agree. No-op for plain semver tags
+        # without a pre-release component (e.g. v0.1.0).
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in *; do
+            new="${f//\~/.}"
+            if [ "$f" != "$new" ]; then
+              echo "→ ${f} → ${new}"
+              mv -- "$f" "$new"
+            fi
+          done
+          ls -lh
+
       - name: Generate SHA256SUMS
         run: |
           set -euo pipefail
@@ -93,18 +113,54 @@ jobs:
           cat SHA256SUMS
 
       - name: Smoke-test package metadata
+        # Prints metadata + contents AND asserts every expected path is
+        # present in both packages. Without these assertions, an nfpm
+        # behavior change (e.g. silently dropping `type: doc` files from
+        # the .deb data archive) would slip past as green CI.
         run: |
           set -euo pipefail
+          EXPECTED_PATHS=(
+            ./usr/bin/volt
+            ./usr/share/doc/volt/copyright
+            ./usr/share/doc/volt/README.md
+          )
+
           echo "→ .deb metadata:"
           dpkg-deb --info dist/*.deb
           echo "→ .deb contents:"
-          dpkg-deb --contents dist/*.deb
+          deb_listing=$(dpkg-deb --contents dist/*.deb)
+          echo "$deb_listing"
+          for p in "${EXPECTED_PATHS[@]}"; do
+            if ! grep -qE " ${p}\$" <<<"$deb_listing"; then
+              echo "✗ .deb missing expected path: ${p}"
+              exit 1
+            fi
+          done
+
           echo "→ .rpm metadata:"
           rpm -qpi dist/*.rpm
           echo "→ .rpm contents:"
-          rpm -qpl dist/*.rpm
+          rpm_listing=$(rpm -qpl dist/*.rpm)
+          echo "$rpm_listing"
+          for p in "${EXPECTED_PATHS[@]}"; do
+            stripped="${p#./}"
+            if ! grep -qx "/${stripped}" <<<"$rpm_listing"; then
+              echo "✗ .rpm missing expected path: /${stripped}"
+              exit 1
+            fi
+          done
+
           echo "→ .rpm requirements:"
-          rpm -qpR dist/*.rpm
+          rpm_reqs=$(rpm -qpR dist/*.rpm)
+          echo "$rpm_reqs"
+          for dep in sudo systemd; do
+            if ! grep -qx "${dep}" <<<"$rpm_reqs"; then
+              echo "✗ .rpm missing expected dependency: ${dep}"
+              exit 1
+            fi
+          done
+
+          echo "✓ all expected paths and deps present in both packages"
 
       - name: Publish GitHub Release
         # Pinned to v2.6.2 commit SHA. softprops/action-gh-release has write

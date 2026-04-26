@@ -33,12 +33,10 @@ contents:
 
   - src: ./LICENSE
     dst: /usr/share/doc/volt/copyright
-    type: doc
     file_info:
       mode: 0644
 
   - src: ./README.md
     dst: /usr/share/doc/volt/README.md
-    type: doc
     file_info:
       mode: 0644
