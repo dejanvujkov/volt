@@ -1,0 +1,101 @@
+# Builds .deb and .rpm packages of volt and attaches them to a GitHub
+# Release whenever a tag matching v* is pushed.
+# See docs/superpowers/specs/2026-04-26-deb-rpm-packaging-design.md.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # required for softprops/action-gh-release to create the release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NFPM_VERSION: v2.46.3
+      NFPM_SHA256: 9170d25ea056d7329def38134b2bcad98d02d221f8331610dcd619e84d28c565
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0   # required so `git describe` in the Makefile sees tags
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.26.2"
+
+      - name: Verify embedded bat binary
+        run: make verify-bat
+
+      - name: Build volt binary
+        run: make build
+
+      - name: Install pinned nfpm
+        run: |
+          set -euo pipefail
+          NFPM_VERSION_BARE="${NFPM_VERSION#v}"
+          URL="https://github.com/goreleaser/nfpm/releases/download/${NFPM_VERSION}/nfpm_${NFPM_VERSION_BARE}_Linux_x86_64.tar.gz"
+          echo "→ Fetching nfpm ${NFPM_VERSION} from ${URL}"
+          curl -fsSL -o /tmp/nfpm.tar.gz "${URL}"
+          ACTUAL=$(sha256sum /tmp/nfpm.tar.gz | awk '{print $1}')
+          if [ "${ACTUAL}" != "${NFPM_SHA256}" ]; then
+            echo "✗ nfpm sha256 mismatch: expected=${NFPM_SHA256} actual=${ACTUAL}"
+            exit 1
+          fi
+          tar -xzf /tmp/nfpm.tar.gz -C /tmp nfpm
+          sudo mv /tmp/nfpm /usr/local/bin/nfpm
+          sudo chmod 0755 /usr/local/bin/nfpm
+          /usr/local/bin/nfpm --version
+
+      - name: Derive package version
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Package version: ${VERSION}"
+          echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
+
+      - name: Build packages
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          nfpm pkg --packager deb --target dist/
+          nfpm pkg --packager rpm --target dist/
+          ls -lh dist/
+
+      - name: Generate SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum *.deb *.rpm > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Smoke-test package metadata
+        run: |
+          set -euo pipefail
+          echo "→ .deb metadata:"
+          dpkg-deb --info dist/*.deb
+          echo "→ .deb contents:"
+          dpkg-deb --contents dist/*.deb
+          echo "→ .rpm metadata:"
+          rpm -qpi dist/*.rpm
+          echo "→ .rpm contents:"
+          rpm -qpl dist/*.rpm
+          echo "→ .rpm requirements:"
+          rpm -qpR dist/*.rpm
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.deb
+            dist/*.rpm
+            dist/SHA256SUMS
+          fail_on_unmatched_files: true
+          generate_release_notes: true
