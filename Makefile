@@ -32,12 +32,13 @@ update-bat:
 ifndef VERSION
 	$(error VERSION is required, e.g. make update-bat VERSION=v0.10.0)
 endif
-	@URL="https://github.com/tshakalekholoane/bat/releases/download/$(VERSION)/bat"; \
+	@set -euo pipefail; \
+	 URL="https://github.com/tshakalekholoane/bat/releases/download/$(VERSION)/bat"; \
 	 SHA_URL="$$URL.sha256"; \
 	 echo "→ Fetching bat $(VERSION) from $$URL…"; \
 	 curl -fsSL -o $(EMBED_BIN).tmp "$$URL"; \
 	 echo "→ Fetching expected sha256…"; \
-	 EXPECTED=$$(curl -fsSL "$$SHA_URL" | awk '{print $$1}'); \
+	 EXPECTED=$$(curl -fsSL "$$SHA_URL" 2>/dev/null | awk '{print $$1}' || true); \
 	 ACTUAL=$$(shasum -a 256 $(EMBED_BIN).tmp | awk '{print $$1}'); \
 	 if [ -n "$$EXPECTED" ] && [ "$$EXPECTED" != "$$ACTUAL" ]; then \
 	   echo "✗ sha256 mismatch: expected=$$EXPECTED actual=$$ACTUAL"; \
