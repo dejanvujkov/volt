@@ -6,6 +6,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -67,12 +68,14 @@ type model struct {
 	width   int
 	height  int
 	startAt time.Time
+	isRoot  bool
 }
 
 func initialModel() model {
 	return model{
 		status:  "Preparing bundled bat binary…",
 		startAt: time.Now(),
+		isRoot:  os.Geteuid() == 0,
 	}
 }
 
@@ -316,6 +319,11 @@ func (m model) View() string {
 	b.WriteString("\n")
 	b.WriteString(subtitleStyle.Render("    " + m.batLine()))
 	b.WriteString("\n")
+
+	if !m.isRoot {
+		b.WriteString(statusWarn.Render("    not running as root — setting, persisting, or resetting the threshold will fail. re-run with `sudo volt`."))
+		b.WriteString("\n")
+	}
 
 	if m.loadErr != nil {
 		b.WriteString(statusWarn.Render(fmt.Sprintf("error reading battery: %v", m.loadErr)))

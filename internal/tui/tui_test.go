@@ -4,6 +4,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -272,3 +273,21 @@ func TestInfoMsg_PreservesOtherStatus(t *testing.T) {
 }
 
 var errFake = fmt.Errorf("fake error")
+
+// --- Root warning banner ----------------------------------------------------
+
+func TestView_ShowsRootWarningWhenNotRoot(t *testing.T) {
+	m := newTestModel()
+	m.isRoot = false
+	if !strings.Contains(m.View(), "not running as root") {
+		t.Fatal("view should surface the root warning when isRoot is false")
+	}
+}
+
+func TestView_HidesRootWarningWhenRoot(t *testing.T) {
+	m := newTestModel()
+	m.isRoot = true
+	if strings.Contains(m.View(), "not running as root") {
+		t.Fatal("view should hide the root warning when isRoot is true")
+	}
+}
