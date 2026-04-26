@@ -43,7 +43,7 @@ jobs:
           NFPM_VERSION_BARE="${NFPM_VERSION#v}"
           URL="https://github.com/goreleaser/nfpm/releases/download/${NFPM_VERSION}/nfpm_${NFPM_VERSION_BARE}_Linux_x86_64.tar.gz"
           echo "→ Fetching nfpm ${NFPM_VERSION} from ${URL}"
-          curl -fsSL -o /tmp/nfpm.tar.gz "${URL}"
+          curl -fsSL --max-redirs 3 -o /tmp/nfpm.tar.gz "${URL}"
           ACTUAL=$(sha256sum /tmp/nfpm.tar.gz | awk '{print $1}')
           if [ "${ACTUAL}" != "${NFPM_SHA256}" ]; then
             echo "✗ nfpm sha256 mismatch: expected=${NFPM_SHA256} actual=${ACTUAL}"
@@ -69,6 +69,22 @@ jobs:
           nfpm pkg --packager rpm --target dist/
           ls -lh dist/
 
+      - name: Validate package count
+        run: |
+          set -euo pipefail
+          shopt -s failglob
+          debs=( dist/*.deb )
+          rpms=( dist/*.rpm )
+          if [ "${#debs[@]}" -ne 1 ]; then
+            echo "✗ expected exactly 1 .deb, found ${#debs[@]}: ${debs[*]}"
+            exit 1
+          fi
+          if [ "${#rpms[@]}" -ne 1 ]; then
+            echo "✗ expected exactly 1 .rpm, found ${#rpms[@]}: ${rpms[*]}"
+            exit 1
+          fi
+          echo "✓ exactly 1 .deb and 1 .rpm in dist/"
+
       - name: Generate SHA256SUMS
         run: |
           set -euo pipefail
@@ -91,7 +107,10 @@ jobs:
           rpm -qpR dist/*.rpm
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        # Pinned to v2.6.2 commit SHA. softprops/action-gh-release has write
+        # access to the release; SHA pinning protects against a compromised or
+        # accidentally-broken upstream release. Bump deliberately when checked.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65   # v2.6.2
         with:
           files: |
             dist/*.deb
