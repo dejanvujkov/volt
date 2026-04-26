@@ -46,8 +46,8 @@ that matches your distro:
 
 ```sh
 VOLT_VERSION=0.1.0   # replace with the latest release tag (without the leading v)
-curl -fsSLO "https://github.com/dejanvujkov/volt/releases/download/v${VOLT_VERSION}/volt_${VOLT_VERSION}_amd64.deb"
-sudo dpkg -i "volt_${VOLT_VERSION}_amd64.deb"
+curl -fsSLO "https://github.com/dejanvujkov/volt/releases/download/v${VOLT_VERSION}/volt_${VOLT_VERSION}-1_amd64.deb"
+sudo dpkg -i "volt_${VOLT_VERSION}-1_amd64.deb"
 ```
 
 **Fedora / RHEL / CentOS Stream / Rocky / openSUSE:**
