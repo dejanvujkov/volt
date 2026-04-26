@@ -34,7 +34,44 @@ never build or install `bat` separately.
 - Standalone CLI subcommands (`volt status`, `volt capacity`, …) so it
   drops into scripts in place of `bat`.
 
-## Install & run
+## Install
+
+### From a release (recommended)
+
+Pre-built `.deb` and `.rpm` packages for x86_64 Linux are attached to every
+[GitHub Release](https://github.com/dejanvujkov/volt/releases). Pick the one
+that matches your distro:
+
+**Debian / Ubuntu / Mint / Pop!_OS:**
+
+```sh
+VOLT_VERSION=0.1.0   # replace with the latest release tag (without the leading v)
+curl -fsSLO "https://github.com/dejanvujkov/volt/releases/download/v${VOLT_VERSION}/volt_${VOLT_VERSION}_amd64.deb"
+sudo dpkg -i "volt_${VOLT_VERSION}_amd64.deb"
+```
+
+**Fedora / RHEL / CentOS Stream / Rocky / openSUSE:**
+
+```sh
+VOLT_VERSION=0.1.0   # replace with the latest release tag (without the leading v)
+curl -fsSLO "https://github.com/dejanvujkov/volt/releases/download/v${VOLT_VERSION}/volt-${VOLT_VERSION}-1.x86_64.rpm"
+sudo rpm -i "volt-${VOLT_VERSION}-1.x86_64.rpm"
+```
+
+**Verifying the download:**
+
+Each release also publishes a `SHA256SUMS` file:
+
+```sh
+curl -fsSLO "https://github.com/dejanvujkov/volt/releases/download/v${VOLT_VERSION}/SHA256SUMS"
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+Both packages install `volt` to `/usr/bin/volt` and require `sudo` and
+`systemd` on the host (used by `volt persist` / `volt reset`). On first
+run, volt extracts its bundled `bat` binary to `~/.cache/volt/bat`.
+
+### From source
 
 ```sh
 git clone https://github.com/dejanvujkov/volt.git
@@ -43,7 +80,7 @@ make build        # compiles volt with the bundled bat binary baked in
 ./bin/volt        # launches the TUI — bat is extracted on first run
 ```
 
-That's it. The `bat` binary ships pre-built inside this repo
+The `bat` binary ships pre-built inside this repo
 (`internal/batbin/batdata/bat`); the build never has to compile it.
 On first run, volt extracts that binary to `~/.cache/volt/bat`.
 
